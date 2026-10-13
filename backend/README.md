@@ -31,6 +31,8 @@ Roles are defined in `src/constants/roles.js`, permission keys in `src/constants
 
 Manager list query accepts `page`, `limit` (maximum 100), `search` (name/email/department), `status` (`Active` or `Inactive`), `department`, `sortBy` (`name`, `email`, `department`, `status`, `createdAt`), and `sortOrder` (`asc` or `desc`). Response data contains `items`, `total`, `page`, `limit`, and `totalPages`.
 
+`GET /api/managers/cursor` accepts `limit` (maximum 100), `cursor`, `search`, `status`, and `department`. Results are ordered by `createdAt` and `_id`, newest first. Use the returned `nextCursor` as the `cursor` query parameter to fetch the next batch; `hasMore` indicates whether another batch is available. The initial request omits `cursor`.
+
 Profile multipart updates accept text fields `firstName`, `lastName`, `email`, `age`, `phone`, and `profilePicture`, plus optional file field `avatarFile`. An uploaded avatar replaces the old image; submitting `profilePicture` as an empty string without a file removes it. Role cannot be changed through profile update. Profile password changes are a separate request and require both the current and new password.
 
 Public account registration accepts `employee` and `manager` roles only; privileged admin role assignment is not exposed through public registration.

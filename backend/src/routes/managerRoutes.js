@@ -6,11 +6,15 @@ const {
   deleteManager,
   getManager,
   listManagers,
+  listManagersCursor,
   updateManager,
 } = require("../controllers/managerController");
 
 const router = express.Router();
 router.use(authenticate);
+router
+  .route("/cursor")
+  .get(requirePermission(PERMISSIONS.MANAGERS_READ), listManagersCursor);
 router.route("/")
   .get(requirePermission(PERMISSIONS.MANAGERS_READ), listManagers)
   .post(requirePermission(PERMISSIONS.MANAGERS_CREATE), createManager);

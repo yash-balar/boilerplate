@@ -12,6 +12,56 @@ const sortFields = new Set([
   "createdAt",
 ]);
 
+const buildManagerFilter = (query) => {
+  const filter = {};
+
+  if (typeof query.search === "string" && query.search.trim()) {
+    const pattern = new RegExp(escapeRegex(query.search.trim()), "i");
+    filter.$or = [
+      { name: pattern },
+      { email: pattern },
+      { department: pattern },
+    ];
+  }
+  if (query.status && query.status !== "all") {
+    if (!["Active", "Inactive"].includes(query.status)) return null;
+    filter.status = query.status;
+  }
+  if (typeof query.department === "string" && query.department.trim()) {
+    filter.department = query.department.trim();
+  }
+
+  return filter;
+};
+
+const encodeManagerCursor = (manager) =>
+  Buffer.from(
+    JSON.stringify({
+      createdAt: manager.createdAt.toISOString(),
+      id: manager._id.toString(),
+    }),
+  ).toString("base64url");
+
+const decodeManagerCursor = (value) => {
+  try {
+    const cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (
+      typeof cursor?.createdAt !== "string" ||
+      typeof cursor.id !== "string" ||
+      !mongoose.isObjectIdOrHexString(cursor.id)
+    ) {
+      return null;
+    }
+    const createdAt = new Date(cursor.createdAt);
+    if (!Number.isFinite(createdAt.getTime())) {
+      return null;
+    }
+    return { createdAt, id: new mongoose.Types.ObjectId(cursor.id) };
+  } catch {
+    return null;
+  }
+};
+
 const listManagers = asyncHandler(async (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
   const limit = Math.min(
@@ -22,29 +72,12 @@ const listManagers = asyncHandler(async (req, res) => {
     ? req.query.sortBy
     : "createdAt";
   const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
-  const filter = {};
-
-  if (typeof req.query.search === "string" && req.query.search.trim()) {
-    const pattern = new RegExp(escapeRegex(req.query.search.trim()), "i");
-    filter.$or = [
-      { name: pattern },
-      { email: pattern },
-      { department: pattern },
-    ];
-  }
-  if (req.query.status && req.query.status !== "all") {
-    if (!["Active", "Inactive"].includes(req.query.status)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Status filter must be Active or Inactive.",
-        });
-    }
-    filter.status = req.query.status;
-  }
-  if (typeof req.query.department === "string" && req.query.department.trim()) {
-    filter.department = req.query.department.trim();
+  const filter = buildManagerFilter(req.query);
+  if (!filter) {
+    return res.status(400).json({
+      success: false,
+      message: "Status filter must be Active or Inactive.",
+    });
   }
 
   const [items, total] = await Promise.all([
@@ -70,6 +103,72 @@ const listManagers = asyncHandler(async (req, res) => {
       page,
       limit,
       totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  });
+});
+
+const listManagersCursor = asyncHandler(async (req, res) => {
+  const limit = Math.min(
+    100,
+    Math.max(1, Number.parseInt(req.query.limit, 10) || 10),
+  );
+  const filter = buildManagerFilter(req.query);
+  if (!filter) {
+    return res.status(400).json({
+      success: false,
+      message: "Status filter must be Active or Inactive.",
+    });
+  }
+
+  if (req.query.cursor !== undefined) {
+    if (typeof req.query.cursor !== "string" || !req.query.cursor) {
+      return res.status(400).json({
+        success: false,
+        message: "Cursor is invalid.",
+      });
+    }
+
+    const cursor = decodeManagerCursor(req.query.cursor);
+    if (!cursor) {
+      return res.status(400).json({
+        success: false,
+        message: "Cursor is invalid.",
+      });
+    }
+    filter.$and = [
+      ...(filter.$and || []),
+      {
+        $or: [
+          { createdAt: { $lt: cursor.createdAt } },
+          { createdAt: cursor.createdAt, _id: { $lt: cursor.id } },
+        ],
+      },
+    ];
+  }
+
+  const items = await Manager.find(filter)
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(limit + 1)
+    .lean({ virtuals: true });
+  const hasMore = items.length > limit;
+  if (hasMore) items.pop();
+
+  const nextCursor =
+    hasMore && items.length ? encodeManagerCursor(items[items.length - 1]) : null;
+  const serializedItems = items.map(
+    ({ _id, __v, createdBy, updatedBy, ...manager }) => ({
+      ...manager,
+      id: _id.toString(),
+    }),
+  );
+
+  return sendSuccess(res, {
+    message: "Managers retrieved successfully.",
+    data: {
+      items: serializedItems,
+      limit,
+      hasMore,
+      nextCursor,
     },
   });
 });
@@ -204,5 +303,6 @@ module.exports = {
   deleteManager,
   getManager,
   listManagers,
+  listManagersCursor,
   updateManager,
 };

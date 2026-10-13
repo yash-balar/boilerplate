@@ -6,6 +6,14 @@ const { sendSuccess } = require("../utils/responseHandler");
 const rolePermissions = require("../constants/rolePermissions");
 const ROLES = require("../constants/roles");
 
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const isStrongPassword = (password) =>
+  password.length >= 8 &&
+  /[A-Z]/.test(password) &&
+  /[a-z]/.test(password) &&
+  /[0-9]/.test(password);
+
 const issueToken = async (user) => {
   const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || "1d",
@@ -49,7 +57,7 @@ const register = asyncHandler(async (req, res) => {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+  if (!isValidEmail(normalizedEmail)) {
     return res
       .status(400)
       .json({ success: false, message: "Enter a valid email address." });
@@ -68,12 +76,7 @@ const register = asyncHandler(async (req, res) => {
       .status(400)
       .json({ success: false, message: "Enter a valid phone number." });
   }
-  if (
-    password.length < 8 ||
-    !/[A-Z]/.test(password) ||
-    !/[a-z]/.test(password) ||
-    !/[0-9]/.test(password)
-  ) {
+  if (!isStrongPassword(password)) {
     return res.status(400).json({
       success: false,
       message:
@@ -131,7 +134,7 @@ const login = asyncHandler(async (req, res) => {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+  if (!isValidEmail(normalizedEmail)) {
     return res
       .status(400)
       .json({ success: false, message: "Enter a valid email address." });
@@ -171,12 +174,7 @@ const changePassword = asyncHandler(async (req, res) => {
       message: "Current and new passwords are required.",
     });
   }
-  if (
-    newPassword.length < 8 ||
-    !/[A-Z]/.test(newPassword) ||
-    !/[a-z]/.test(newPassword) ||
-    !/[0-9]/.test(newPassword)
-  ) {
+  if (!isStrongPassword(newPassword)) {
     return res.status(400).json({
       success: false,
       message:
